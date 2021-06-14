@@ -224,3 +224,31 @@ int sock_set_rate_limit(int fd, uint32_t rate_limit) {
     }
     return rc;
 }
+
+int wait_for_single_socket(int fd, int which) {
+    fd_set read_fds;
+    fd_set write_fds;
+    FD_ZERO(&read_fds);
+    FD_ZERO(&write_fds);
+    
+    if (which & 0x1)
+        FD_SET(fd, &read_fds);
+
+    if (which & 0x2)
+        FD_SET(fd, &write_fds);
+
+    struct timeval timeout_timeval;
+    int ret = 0;
+    do {
+        memcpy(&timeout_timeval, g_pApp->m_const_params.select_timeout,
+            sizeof(struct timeval));
+        
+        // No exceptfds handling for now.
+        ret = select(fd + 1, &read_fds, &write_fds, NULL, &timeout_timeval);
+    } while (ret == -1 && errno == EINTR);
+
+    if (ret > 0 && !FD_ISSET(fd, &read_fds) && !FD_ISSET(fd, &write_fds))
+        return 0;
+
+    return ret;
+}

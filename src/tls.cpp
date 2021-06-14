@@ -264,7 +264,7 @@ void tls_exit(void) {
     }
 }
 
-int tls_connect_or_accept(SSL* ssl, IoHandler& ioHandler) {
+int tls_connect_or_accept(SSL* ssl) {
     int ret = 0;
     bool try_again = false;
     auto ssl_func = (SSL_is_server(ssl) ? SSL_accept : SSL_connect);
@@ -279,13 +279,14 @@ int tls_connect_or_accept(SSL* ssl, IoHandler& ioHandler) {
                     ((err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_CONNECT) ? 1 : 0) |
                     ((err == SSL_ERROR_WANT_WRITE || err == SSL_ERROR_WANT_CONNECT) ? 2 : 0);
                
-                if (0 > ioHandler.waitForSingleSocket(SSL_get_fd(ssl), which)) {
+                log_dbg("tls_connect_or_accept waiting for socket");
+                if (0 > wait_for_single_socket(SSL_get_fd(ssl), which)) {
                     log_err("Failed to wait for event while establishing TLS");
                 } else {
                     try_again = true;
                 }
             } else {
-                tls_log_err("ERROR: Failed to establish TLS");
+                tls_log_err("ERROR: Failed to establish TLS (%d,%d)", err, errno);
             }
         }
     } while (try_again);
@@ -293,7 +294,7 @@ int tls_connect_or_accept(SSL* ssl, IoHandler& ioHandler) {
     return ret;
 }
 
-void* tls_establish(int fd, IoHandler& ioHandler) {
+void* tls_establish(int fd) {
     SSL *ssl = NULL;
 
     if (!ssl_ctx) {
@@ -311,7 +312,7 @@ void* tls_establish(int fd, IoHandler& ioHandler) {
         goto err;
     }
 
-    if (tls_connect_or_accept(ssl, ioHandler) <= 0)
+    if (tls_connect_or_accept(ssl) <= 0)
          goto err;
     
     return (void *)ssl;

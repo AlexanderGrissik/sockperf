@@ -343,4 +343,6 @@ static inline int msg_sendto(int fd, uint8_t *buf, int nbytes,
 
 int sock_set_rate_limit(int fd, uint32_t rate_limit);
 
+int wait_for_single_socket(int fd, int which);
+
 #endif /* COMMON_H_ */

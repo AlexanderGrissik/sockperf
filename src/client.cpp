@@ -510,7 +510,7 @@ static int _connect_check(int ifd) {
     FD_SET(ifd, &rfds);
     if (ifd > max_fd) max_fd = ifd;
 
-    int connrc = select(max_fd + 1, &rfds, &wfds, NULL, &tv);
+    select(max_fd + 1, &rfds, &wfds, NULL, &tv);
     if (FD_ISSET(ifd, &wfds) || FD_ISSET(ifd, &rfds)) {
         socklen_t err_len;
         int error;
@@ -520,9 +520,6 @@ static int _connect_check(int ifd) {
             log_err("Can`t connect socket");
             rc = SOCKPERF_ERR_SOCKET;
         }
-    } else if (0 == connrc) {
-        log_msg("ERROR: Can`t connect socket (select() Timeout)");
-        rc = SOCKPERF_ERR_TIMEOUT;
     }
 
     return rc;
@@ -589,7 +586,7 @@ int Client<IoType, SwitchDataIntegrity, SwitchActivityInfo, SwitchCycleDuration,
                 }
 #if defined(DEFINED_TLS)
                 if (g_pApp->m_const_params.tls && rc == SOCKPERF_ERR_NONE) {
-                    g_fds_array[ifd]->tls_handle = tls_establish(ifd, m_ioHandler);
+                    g_fds_array[ifd]->tls_handle = tls_establish(ifd);
                     if (!g_fds_array[ifd]->tls_handle) {
                         rc = SOCKPERF_ERR_SOCKET;
                         break;
