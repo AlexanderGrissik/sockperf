@@ -27,7 +27,7 @@
  */
 
 #include "common.h"
-
+#include "iohandlers.h"
 #include "tls.h"
 
 #if defined(DEFINED_TLS)
@@ -172,6 +172,15 @@ const char *tls_chipher(const char *chipher) {
 
 #if (DEFINED_TLS == 1)
 
+#define tls_log_err(log_fmt, ...)  { \
+    unsigned long e = ERR_peek_error(); \
+    log_msg(log_fmt ", TLS-Error: %d, %s, %s ", ##__VA_ARGS__, \
+        ERR_GET_REASON(e), ERR_lib_error_string(e), ERR_reason_error_string(e)); \
+}
+
+
+#define IS_TLS_ERR_WANT_RW(e) (SSL_ERROR_WANT_READ == (e) || SSL_ERROR_WANT_WRITE == (e))
+
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
@@ -255,35 +264,58 @@ void tls_exit(void) {
     }
 }
 
-void *tls_connect(int fd) {
+int tls_connect_or_accept(SSL* ssl, IoHandler& ioHandler) {
+    int ret = 0;
+    bool try_again = false;
+    auto ssl_func = (SSL_is_server(ssl) ? SSL_accept : SSL_connect);
+    
+    do {
+        try_again = false;
+        ret = ssl_func(ssl);
+        if (ret < 0) {
+            int err = SSL_get_error(ssl, ret);
+            if (IS_TLS_ERR_WANT_RW(err) || err == SSL_ERROR_WANT_CONNECT) {
+                int which =
+                    ((err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_CONNECT) ? 1 : 0) |
+                    ((err == SSL_ERROR_WANT_WRITE || err == SSL_ERROR_WANT_CONNECT) ? 2 : 0);
+               
+                if (0 > ioHandler.waitForSingleSocket(SSL_get_fd(ssl), which)) {
+                    log_err("Failed to wait for event while establishing TLS");
+                } else {
+                    try_again = true;
+                }
+            } else {
+                tls_log_err("ERROR: Failed to establish TLS");
+            }
+        }
+    } while (try_again);
+
+    return ret;
+}
+
+void* tls_establish(int fd, IoHandler& ioHandler) {
     SSL *ssl = NULL;
 
     if (!ssl_ctx) {
+        log_msg("ERROR: Failed tls_establish(), no ssl_ctx");
         goto err;
     }
 
     ssl = SSL_new(ssl_ctx);
     if (!ssl) {
-        log_err("Failed SSL_new()");
+        log_msg("ERROR: Failed SSL_new()");
         goto err;
     }
     if (!SSL_set_fd(ssl, fd)) {
         log_err("Failed SSL_set_fd()");
         goto err;
     }
-    if (SSL_is_server(ssl)) {
-        if (SSL_accept(ssl) != 1) {
-            log_err("Failed SSL_accept()");
-            goto err;
-        }
-    } else {
-        if (SSL_connect(ssl) != 1) {
-            log_err("Failed SSL_connect()");
-            goto err;
-        }
-    }
 
+    if (tls_connect_or_accept(ssl, ioHandler) <= 0)
+         goto err;
+    
     return (void *)ssl;
+
 err:
     if (ssl) {
         SSL_free(ssl);

@@ -156,6 +156,36 @@ int IoSelect::prepareNetwork() {
 
     return rc;
 }
+
+int IoSelect::waitForSingleSocket(int fd, int which) {
+    fd_set read_fds;
+    fd_set write_fds;
+    FD_ZERO(&read_fds);
+    FD_ZERO(&write_fds);
+    
+    if (which & 0x1)
+        FD_SET(fd, &read_fds);
+
+    if (which & 0x2)
+        FD_SET(fd, &write_fds);
+
+    int ret = 0;
+    do {
+        if (mp_timeout_timeval) {
+            memcpy(mp_timeout_timeval, g_pApp->m_const_params.select_timeout,
+                sizeof(struct timeval));
+        }
+
+        // No exceptfds handling for now.
+        ret = select(fd + 1, &read_fds, &write_fds, NULL, mp_timeout_timeval);
+    } while (ret == -1 && errno == EINTR);
+
+    //if (ret > 0 && !FD_ISSET(ifd, &read_fds) && !FD_ISSET(ifd, &write_fds))
+    //    return 0;
+
+    return ret;
+}
+
 #ifndef WIN32
 //==============================================================================
 //------------------------------------------------------------------------------
@@ -208,6 +238,27 @@ int IoPoll::prepareNetwork() {
 
     return rc;
 }
+
+int IoPoll::waitForSingleSocket(int fd, int which) {
+    struct pollfd pollev= { fd, 0, 0 };
+
+    if (which & 0x1)
+        pollev.events |= (POLLIN | POLLPRI | POLLRDBAND | POLLRDHUP);
+    
+    if (which & 0x2)
+        pollev.events |= (POLLOUT);
+
+    int ret = 0;
+    do {
+        ret = poll(&pollev, 1, m_timeout_msec);
+    } while (ret == -1 && errno == EINTR);
+
+    if (ret > 0 && (pollev.revents & pollev.events) == 0)
+        return 0;
+
+    return ret;
+}
+
 #ifndef __FreeBSD__
 //==============================================================================
 //------------------------------------------------------------------------------
@@ -265,6 +316,37 @@ int IoEpoll::prepareNetwork() {
 
     return rc;
 }
+
+int IoEpoll::waitForSingleSocket(int fd, int which) {
+    struct epoll_event ev = { .events = 0U, .data = {.fd = fd} };
+
+    int epfd = epoll_create(1);
+    if (unlikely(epfd == -1)) {
+        log_err("Failed to create epoll object.");
+        return -1;
+    }
+
+    if (which & 0x1)
+        ev.events |= (EPOLLIN | EPOLLPRI | EPOLLRDHUP);
+
+    if (which & 0x2)
+        ev.events |= (EPOLLOUT);
+
+    if (0 != epoll_ctl(epfd, EPOLL_CTL_ADD, ev.data.fd, &ev)) {
+        log_err("Failed to add epoll events.");
+        return -1;
+    }
+
+    int ret;
+    do {
+        ret = epoll_wait(epfd, &ev, 1, m_timeout_msec);
+    } while (ret == -1 && errno == EINTR);
+
+    close(epfd);
+
+    return ret;
+}
+
 #endif
 #ifdef USING_VMA_EXTRA_API
 //==============================================================================
@@ -331,5 +413,10 @@ int IoSocketxtreme::prepareNetwork() {
     }
     return rc;
 }
+
+int IoSocketxtreme::waitForSingleSocket(int fd, int which) {
+    return fd; // Not supported yet.
+}
+
 #endif
 #endif

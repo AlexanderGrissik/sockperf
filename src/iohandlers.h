@@ -40,6 +40,7 @@ public:
     inline int get_look_end() const { return m_look_end; }
 
     virtual int prepareNetwork() = 0;
+    virtual int waitForSingleSocket(int fd, int which) = 0;
     void warmup(Message *pMsgRequest) const;
 
     const int m_fd_min, m_fd_max, m_fd_num;
@@ -69,6 +70,7 @@ public:
     }
 
     virtual int prepareNetwork();
+    virtual int waitForSingleSocket(int fd, int which) override { return fd; }
 };
 
 //==============================================================================
@@ -154,6 +156,7 @@ public:
     }
 
     virtual int prepareNetwork();
+    virtual int waitForSingleSocket(int fd, int which) override { return fd; }
 
     int m_fd_min_all, m_fd_max_all;
 };
@@ -221,6 +224,7 @@ public:
     inline int analyzeArrival(int ifd) const { return FD_ISSET(ifd, &m_readfds) ? ifd : 0; }
 
     virtual int prepareNetwork();
+    virtual int waitForSingleSocket(int fd, int which) override;
 
 private:
     struct timeval m_timeout_timeval;
@@ -294,6 +298,7 @@ public:
     }
 
     virtual int prepareNetwork();
+    virtual int waitForSingleSocket(int fd, int which) override;
 
 private:
     const int m_timeout_msec;
@@ -368,7 +373,7 @@ public:
     }
 
     virtual int prepareNetwork();
-
+    virtual int waitForSingleSocket(int fd, int which) override;
 private:
     const int m_timeout_msec;
     struct epoll_event *mp_epoll_events;
@@ -483,7 +488,8 @@ public:
     }
 
     virtual int prepareNetwork();
-
+    virtual int waitForSingleSocket(int fd, int which) override;
+    
 private:
     int m_vma_comp_index;
     vma_ring_comps *m_current_vma_ring_comp;
